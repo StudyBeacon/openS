@@ -1,0 +1,12 @@
+{
+  "name": "openmythos-v2",
+  "scripts": {
+    "dev": "concurrently \"cd backend && ./start.sh\" \"cd frontend && npm run dev\" \"cd ast-service && node index.js\"",
+    "backend": "cd backend && ./start.sh",
+    "frontend": "cd frontend && npm run dev",
+    "ast": "cd ast-service && node index.js"
+  },
+  "dependencies": {
+    "concurrently": "*"
+  }
+}
