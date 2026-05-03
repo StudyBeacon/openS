@@ -6,7 +6,7 @@ from typing import Dict, List
 from rules import scan_with_rules
 from ast_analyzer import scan_python_ast
 from logic_analyzer import scan_logic
-from semantic_rules.python_advanced import scan_advanced_patterns
+from semantic_rules import scan_advanced_patterns
 from complexity import calculate_complexity, is_critical_path
 from ai_engine import scan_with_ollama
 from groq_engine import scan_with_groq
@@ -26,10 +26,10 @@ async def scan_code(code: str, language: str) -> Dict:
     # ── PHASE 2: AST & SEMANTIC RULES ──
     try:
         if language == "python":
-            ast_findings = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, scan_python_ast, code),
-                timeout=5.0
-            )
+            from ast_analyzer import ASTAnalyzer
+            ast_analyzer = ASTAnalyzer()
+            ast_findings = ast_analyzer.analyze(code, language)
+            
             logic_findings = scan_logic(code)
             semantic_findings = scan_advanced_patterns(code)
         else:

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { checkHealth, scanCode, scanFiles } from './api';
+import { checkHealth, scanCode, scanFiles, runLiveScan } from './api';
 import CodeEditor from './components/CodeEditor';
 import FileUpload from './components/FileUpload';
+import LiveURLScan from './components/LiveURLScan';
 import ResultsPanel from './components/ResultsPanel';
 
 export default function App() {
@@ -62,6 +63,19 @@ export default function App() {
     }
   };
 
+  const handleLiveScan = async (url, depth) => {
+    setScanning(true);
+    setError(null);
+    try {
+      const result = await runLiveScan(url, depth);
+      setResults(result);
+    } catch(err) {
+      setError(err.response?.data?.detail || err.message || 'Live scan failed');
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
       <nav className="border-b border-gray-800 bg-gray-900 px-8 py-4 flex justify-between items-center">
@@ -93,7 +107,12 @@ export default function App() {
       )}
 
       <div className="border-b border-gray-800 bg-gray-900 px-8 flex gap-8">
-        {[{id:'editor',label:'Code Editor'},{id:'files',label:'File Upload'},{id:'github',label:'GitHub Scan'}].map(tab => (
+        {[
+          {id:'editor',label:'Code Editor'},
+          {id:'files',label:'File Upload'},
+          {id:'live',label:'Live URL'},
+          {id:'github',label:'GitHub Scan'}
+        ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`py-4 px-2 border-b-2 transition-all ${activeTab === tab.id ? 'border-green-400 text-green-400 font-semibold' : 'border-transparent text-gray-400'}`}>
             {tab.label}
@@ -108,6 +127,9 @@ export default function App() {
           )}
           {activeTab === 'files' && (
             <FileUpload onScan={handleFileScan} scanning={scanning} results={Array.isArray(results) ? results : null} />
+          )}
+          {activeTab === 'live' && (
+            <LiveURLScan onScan={handleLiveScan} scanning={scanning} />
           )}
           {activeTab === 'github' && (
             <div className="flex items-center justify-center h-full text-gray-500">

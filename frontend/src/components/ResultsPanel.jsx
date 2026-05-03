@@ -69,16 +69,51 @@ export default function ResultsPanel({ results, scanning }) {
 
   const metadata = results.metadata || {};
 
+  const handleDownloadPDF = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/report/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(results),
+      });
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openmythos_report_${new Date().getTime()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      alert('Failed to download PDF report.');
+    }
+  };
+
   return (
     <div className="h-full bg-gray-900 overflow-auto p-6 space-y-6">
       {/* Risk Header */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
         <div className="flex items-end justify-between">
-          <div>
-            <div className="text-6xl font-bold text-green-400 mb-2">
-              {results.risk_score}
+          <div className="flex items-center gap-8">
+            <div>
+              <div className="text-6xl font-bold text-green-400 mb-2">
+                {results.risk_score}
+              </div>
+              <p className="text-gray-400 text-sm">Risk Score</p>
             </div>
-            <p className="text-gray-400 text-sm">Risk Score</p>
+            
+            <button 
+              onClick={handleDownloadPDF}
+              className="mt-4 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg shadow-green-900/20"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              PDF Report
+            </button>
           </div>
           <div className="flex flex-col gap-3 items-end">
             <span

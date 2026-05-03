@@ -70,3 +70,22 @@ export async function checkHealth() {
     throw error;
   }
 }
+
+/**
+ * Perform a live website scan
+ * 
+ * @param {string} url - Target URL
+ * @param {number} depth - Crawl depth
+ * @returns {Promise<Object>} Scan results
+ */
+export async function runLiveScan(url, depth = 2) {
+  try {
+    const response = await apiClient.post('/api/live-scan', {
+      url,
+      depth,
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}

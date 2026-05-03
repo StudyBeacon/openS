@@ -6,9 +6,19 @@ import os
 from typing import List
 from pydantic import BaseModel, Field
 from scanner import scan_code
+from github_scanner import RepositoryScanner
+from zip_scanner import ZipScanner
+from pdf_report import PDFGenerator
+from live_scanner import LiveScanner
+from fastapi.responses import Response
+import shutil
+import tempfile
 
 # In-memory history (last 50 scans)
 scan_history: List[dict] = []
+repo_scanner = RepositoryScanner()
+zip_scanner = ZipScanner()
+pdf_gen = PDFGenerator()
 MAX_HISTORY = 50
 
 
@@ -178,6 +188,122 @@ async def history() -> List[dict]:
     - Last 50 scans in reverse chronological order (newest first)
     """
     return scan_history
+
+
+class RepoRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/scan-repo")
+async def scan_repo(request: RepoRequest):
+    """Scan a public GitHub repository."""
+    result = await repo_scanner.scan_repo(request.url)
+    store_scan_result(result)
+    return result
+
+
+@app.post("/api/scan-zip")
+async def scan_zip(file: UploadFile = File(...)):
+    """Upload and scan a zip file."""
+    # Save upload to temp file
+    suffix = os.path.splitext(file.filename)[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        result = await zip_scanner.scan_zip(tmp_path)
+        store_scan_result(result)
+        return result
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+@app.post("/api/report/pdf")
+async def export_pdf(data: dict):
+    """Generate and return a PDF report."""
+    pdf_bytes = pdf_gen.generate(data)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=openmythos_report.pdf"}
+    )
+
+
+class LiveScanRequest(BaseModel):
+    url: str = Field(..., description="The URL of the website to scan")
+    depth: int = Field(default=2, description="Maximum crawling depth")
+
+
+@app.post("/api/live-scan")
+async def live_scan(request: dict):
+    url = request.get("url")
+    depth = request.get("depth", 1)
+    timeout = request.get("timeout", 15) # Default 15s
+    
+    if not url:
+        from fastapi import HTTPException
+        raise HTTPException(400, "URL required")
+    
+    from live_scanner import LiveScanner
+    import asyncio
+    
+    scanner = LiveScanner(url, depth=depth, verbose=True, timeout=timeout)
+    try:
+        # Run sync scanner in a separate thread with an overall timeout
+        results = await asyncio.wait_for(
+            asyncio.to_thread(scanner.run),
+            timeout=timeout + 5 # Give a small buffer
+        )
+        store_scan_result(results)
+        return results
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "message": f"Scan timed out after {timeout} seconds",
+            "vulnerabilities": [],
+            "summary": {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        }
+    finally:
+        scanner.close()
+
+
+class ManualTestRequest(BaseModel):
+    url: str
+    param: str
+    payload: str
+    type: str # 'sqli' or 'xss'
+
+
+@app.post("/api/test-target")
+async def manual_test(request: ManualTestRequest):
+    """Manually test a specific URL and parameter with a custom payload."""
+    scanner = LiveScanner(request.url, depth=0, verbose=True)
+    try:
+        method = "GET" # Default to GET for simplicity in manual test
+        resp = scanner.send_payload(request.url, method, request.param, request.payload)
+        
+        if not resp:
+            return {"vulnerable": False, "target": request.url, "snippet": "No response from target."}
+
+        vulnerable = False
+        if request.type == "sqli":
+            # Repurpose detection logic from scanner
+            sql_errors = ["sql syntax", "mysql_fetch", "you have an error", "unclosed quotation mark", "warning: mysql"]
+            if any(err in resp.text.lower() for err in sql_errors):
+                vulnerable = True
+        else: # xss
+            if request.payload in resp.text and "&lt;" not in resp.text:
+                vulnerable = True
+            
+        return {
+            "vulnerable": vulnerable,
+            "target": resp.url if hasattr(resp, 'url') else request.url,
+            "snippet": resp.text[:1000] if vulnerable else "No vulnerability detected."
+        }
+    finally:
+        scanner.close()
 
 
 if __name__ == "__main__":
